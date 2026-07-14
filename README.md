@@ -1,6 +1,10 @@
 # ComfyUI-NukeLink
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+> **This is a fork of [ComfyUI-NukeLink](https://github.com/drberkowitz/ComfyUI-NukeLink) by [Daniel Berkowitz](https://github.com/drberkowitz).**
+> All credit for the original bridge goes to him. This fork adds a workflow **template picker** to the send step, resolves **pipeline-relative Read paths**, and ships the Nuke side as a **drop-in package**. See [What's new in this fork](#-whats-new-in-this-fork).
+> Licensed MIT, same as the original.
+
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Nuke](https://img.shields.io/badge/Nuke-10%2B-yellow)
 ![Nuke Indie](https://img.shields.io/badge/Nuke%20Indie-supported-yellow)
@@ -16,6 +20,7 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
 
 ## 📚 Table of Contents
 
+- [🆕 What's new in this fork](#-whats-new-in-this-fork)
 - [✨ Features](#-features)
 - [📋 Requirements](#-requirements)
 - [🛠️ Installation](#️-installation)
@@ -32,6 +37,29 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
   - [Path Builder - NukeLink](#path-builder---nukelink)
 - [⚠️ Known Limitations](#️-known-limitations)
 - [🙏 Acknowledgements](#-acknowledgements)
+
+---
+
+## 🆕 What's new in this fork
+
+Everything below is additive — the original behaviour is preserved and is still the default.
+
+**Workflow template picker.** "Send To ComfyUI" now opens a dialog where you choose a *saved ComfyUI workflow* to build around the plate, instead of always getting bare nodes. The chosen workflow is instantiated into the current graph, with the plate injected into its `Read - NukeLink` node and its `Path Builder` populated from the Nuke script. Templates are just workflow `.json` files in a folder you pick — **drop a new one in and it appears in the dropdown; no code changes.**
+
+- **Default** — always listed first and pre-selected. Builds the workflow saved at `~/.nuke/nukelink_default_template.json`. This is your own starting setup: save a workflow there to define it.
+- Every other entry is a `.json` from your Workflows Folder.
+
+The Workflows Folder and Output Subpath are remembered between sends; the dropdown always reopens on **Default**.
+
+If no default template exists yet, choosing **Default** falls back to the original behaviour (Read node(s) + Path Builder only), so a fresh install still sends something useful. That bare mode can also be offered as an explicit dropdown entry by setting `SHOW_BARE_OPTION = True`.
+
+**Pipeline-relative Read paths are resolved.** Many pipelines set the Root node's `project_directory` and store Read paths relative to it. ComfyUI has no concept of that, so those paths used to arrive unusable. They are now resolved to absolute before sending (using the same rule Nuke itself applies), with the `%04d` / `####` frame pattern preserved. Absolute paths are untouched, so existing setups are unaffected. A Read that still cannot be resolved is skipped with a clear reason instead of being sent broken.
+
+**Optional `project_directory` shot root.** Set `USE_PROJECT_DIRECTORY = True` to use Nuke's `project_directory` as the shot root for the output location, instead of counting folders with `LEVELS_UP`. If it is unset, the `LEVELS_UP` climb is used as before. Off by default.
+
+**Nuke side is now a drop-in package.** No more copying a script and pasting lines into your `menu.py` — put one folder on your plugin path and it self-registers. See [Nuke Side](#nuke-side).
+
+**EXR output note.** Writing EXR requires **OpenImageIO**; OpenCV cannot write EXR (its OpenEXR codec is disabled by default since 4.10) and Pillow cannot write it at all. `OpenImageIO` is in `requirements.txt` — make sure it actually installed into the Python your ComfyUI runs on, or EXR writes will fail with "No library could write".
 
 ---
 
@@ -69,33 +97,39 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
 
 1. Navigate to your ComfyUI `custom_nodes` folder
 2. Clone this repo:
-`git clone https://github.com/drberkowitz/ComfyUI-NukeLink.git`
-3. Restart ComfyUI
+`git clone https://github.com/ardaevin/ComfyUI-NukeLink.git`
+3. Install the Python requirements into the Python **that ComfyUI runs on**. For a Windows portable install that is:
+`python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI-NukeLink\requirements.txt`
+4. Restart ComfyUI
+
+> **EXR users:** confirm `OpenImageIO` imported successfully. It is the only one of the three image libraries that can write EXR.
 
 ### Nuke Side
 
-1. Locate the `nuke/` folder inside this repo. It contains the following structure:
+The Nuke side ships as a self-contained package — Nuke runs the `init.py` / `menu.py` inside any folder on its plugin path, so it registers the menu and starts the listener on its own. **Nothing needs to be pasted into your `menu.py`.**
+
 ```
 nuke/
-├── menu.py
-└── python/
+└── NukeLink/
+    ├── init.py
+    ├── menu.py
     └── sendToComfyUI.py
 ```
-2. Copy `sendToComfyUI.py` into the folder where you keep Python scripts inside your `.nuke` folder. The included `menu.py` assumes this is a folder called `python`, so the script would live at `.nuke/python/sendToComfyUI.py`. If you store scripts elsewhere, update the `nuke.pluginAddPath` line in `menu.py` to match your folder name.
-3. If you do not have a `menu.py` in your `.nuke` folder, copy `menu.py` into the `.nuke` folder.
-4. If you already have a `menu.py` in your `.nuke` folder, do not replace it. Add the following lines to your existing `menu.py`:
+
+Pick **one** of these:
+
+**Option A — one line in your `.nuke/init.py`** (recommended):
 ```python
-   nuke.pluginAddPath( './python/' )
-   
-   import sendToComfyUI
-
-   sendToComfyUI.start_listener()
-
-   nodesMenu = nuke.menu('Nodes').addMenu("SendToComfyUI","")
-   nodesMenu.addCommand("Send To ComfyUI", "sendToComfyUI.send_to_comfyui()", "")
+nuke.pluginAddPath('/path/to/ComfyUI-NukeLink/nuke/NukeLink')
 ```
-5. If your pipeline uses an `init.nuke` file, it is recommended to move the `nuke.pluginAddPath` line there instead of keeping it in `menu.py`.
-6. Restart Nuke
+
+**Option B — no file edits at all.** Add the `NukeLink` folder to your `NUKE_PATH` environment variable.
+
+**Option C — copy it in.** Copy the whole `NukeLink` folder into your `.nuke` directory, then add `nuke.pluginAddPath('./NukeLink')` to your `.nuke/init.py`.
+
+Then restart Nuke. You will find **Nodes ▸ SendToComfyUI ▸ Send To ComfyUI**.
+
+To bind a keyboard shortcut, set `MENU_SHORTCUT` in `nuke/NukeLink/menu.py` (e.g. `"ctrl+shift+c"`). It is empty by default so it cannot collide with an existing binding — note that some *system-wide* hotkeys (Microsoft Copilot, for instance) are grabbed by the OS before Nuke ever sees them.
 
 ### Configuration
 
@@ -103,7 +137,11 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 
 - `COMFYUI_HOST` - The address ComfyUI is running on. Default is `http://127.0.0.1:8188`. Change this if you are running ComfyUI on a different port.
 - `LEVELS_UP` - How many folders to climb from your `.nk` script location to reach the shot root. For example, if your script lives at `E:/Shows/Project/Shots/SH010/nuke/scripts/SH010_comp_v001.nk`, set this to `2` to land at `E:/Shows/Project/Shots/SH010/`.
-- `OUTPUT_SUBFOLDER` - The folder name appended after climbing. Default is `elements`. This becomes the base output location populated in the Path Builder node.
+- `OUTPUT_SUBFOLDER` - The folder path appended after climbing. Default is `elements`. May be a nested path such as `Comp/Inputs/ComfyUI`. This becomes the base output location populated in the Path Builder node.
+- `USE_PROJECT_DIRECTORY` - When `True`, and the Nuke script has a `project_directory` set, that folder is used as the shot root instead of the `LEVELS_UP` climb. Falls back to the climb when it is unset, so it is safe to leave on. Default `False`. **Leave it off if your `project_directory` points at the show root rather than the shot**, or output would land at the show level.
+- `DEFAULT_WORKFLOWS_FOLDER` - Seeds the "Workflows Folder" field on first run. Empty by default; whatever you browse to is remembered afterwards.
+- `DEFAULT_TEMPLATE_FILE` - Where the **Default** template is read from. Defaults to `~/.nuke/nukelink_default_template.json`. Save a ComfyUI workflow to that path to define your default setup.
+- `SHOW_BARE_OPTION` - Whether to list `(bare)` — Read node(s) + Path Builder only, no template — as an explicit dropdown entry. Default `False`. It remains the automatic fallback when no default template exists, whether or not it is listed.
 - `SHOT_ENV_VAR` - The name of the environment variable your pipeline uses to identify the current shot. NukeLink will look this up at runtime using `os.environ.get()`. For example, if your pipeline sets an environment variable called `SHOTGUN_SHOT` or `SHOW_SHOT`, put that name here. If the variable is not found in the environment, NukeLink will fall back to parsing the shot name from the script filename using `SHOT_VERSION_SEPARATOR`.
 - `SHOT_VERSION_SEPARATOR` - The string in your script filename that separates the shot name from the version. Default is `"_comp_v"`. For example, `SH010_comp_v001.nk` would yield shot name `SH010`. Adjust this to match your naming convention.
 
@@ -197,7 +235,27 @@ The Path Builder constructs an output file path and passes it to a connected Wri
 
 ---
 
+## 🧱 Working with templates
+
+A template is nothing more than a ComfyUI workflow you saved, which contains a `Read - NukeLink` node. On send, that workflow's nodes and links are added to your current graph, the plate is injected into its Read node, and its Path Builder is filled in from the Nuke script.
+
+**To create one:** build the graph you want in ComfyUI (Read → your processing → Write, with a Path Builder feeding the Write's `file_path`), then save it.
+
+- Save it to `~/.nuke/nukelink_default_template.json` to make it your **Default**.
+- Save it into your **Workflows Folder** to have it listed in the dropdown by filename.
+
+**Rules of thumb**
+
+- The template must contain a `Read - NukeLink` node — that is the injection point. A `Path Builder - NukeLink` is strongly recommended, since it is what carries `nuke_port` back to the Write node for the return trip.
+- Templates are added to the current graph, they do not replace it.
+- If you select several Read nodes in Nuke, the first is injected into the template and the rest are added as plain Read nodes beside it.
+- A node type your template references but which is not installed is skipped with a console warning rather than failing the whole send.
+
+---
+
 ## 🙏 Acknowledgements
+
+**Original author** - [Daniel Berkowitz](https://github.com/drberkowitz), who wrote [ComfyUI-NukeLink](https://github.com/drberkowitz/ComfyUI-NukeLink). This fork exists only because that bridge already worked well; the Read/Write/Path Builder nodes, the preview system, and the ComfyUI↔Nuke transport are all his.
 
 **Nuke node logic** - [sumitchatterjee13](https://github.com/sumitchatterjee13/nuke-nodes-comfyui) for the foundational Nuke node approach this tool builds on.
 
@@ -206,3 +264,5 @@ The Path Builder constructs an output file path and passes it to a connected Wri
 ---
 
 *ComfyUI-NukeLink was developed by Daniel Berkowitz. The majority of the code was written with the assistance of [Claude](https://claude.ai)*
+
+*This fork is maintained by [Arda Evin](https://github.com/ardaevin), also with the assistance of [Claude](https://claude.ai).*

@@ -1202,6 +1202,112 @@ app.registerExtension({
     }
 });
 
+// ---------------------------------------------------------------------------
+// Template workflows: the Nuke send dialog can pick a saved workflow .json,
+// which is inserted into the current graph with the plate injected into it.
+// ---------------------------------------------------------------------------
+
+// Configure a Read - NukeLink node with data sent from Nuke.
+function nukeLinkApplyRead(node, read) {
+    node._nukeWasConfigured = true;
+    const showPreview = app.ui.settings.getSettingValue("NukeLink.Read.ShowPreviewByDefault", true);
+    const playPreview = app.ui.settings.getSettingValue("NukeLink.Read.PlayPreviewByDefault", true);
+    node._nukeLinkPreviewRestore = {
+        hidden: !showPreview,
+        paused: !playPreview,
+    };
+    node._nukeReadRestore = {
+        first_frame:    read.first_frame,
+        last_frame:     read.last_frame,
+        colorspace:     read.colorspace,
+        missing_frames: read.missing_frames,
+    };
+
+    const fileWidget = node.widgets?.find(w => w.name === "file_path");
+    if (fileWidget) fileWidget.value = read.file_path;
+
+    setTimeout(() => {
+        node.updateParameters({
+            filename:       read.file_path,
+            first_frame:    read.first_frame,
+            last_frame:     read.last_frame,
+            colorspace:     read.colorspace,
+            missing_frames: read.missing_frames,
+        }, true);
+    }, 0);
+}
+
+function nukeLinkSetWidget(node, name, value) {
+    const w = node?.widgets?.find(w => w.name === name);
+    if (w) w.value = value;
+}
+
+// Instantiate a saved workflow's nodes and links into the CURRENT graph
+// (additive - nothing is cleared). Returns the created nodes; groups are
+// not imported. Nodes whose pack is missing are skipped with a warning.
+function nukeLinkInsertTemplate(template, baseX, baseY) {
+    const entries = Array.isArray(template?.nodes) ? template.nodes : [];
+    if (!entries.length) return [];
+
+    // Offset so the template's bounding-box top-left lands at (baseX, baseY)
+    let minX = Infinity, minY = Infinity;
+    for (const e of entries) {
+        if (Array.isArray(e.pos)) {
+            minX = Math.min(minX, e.pos[0]);
+            minY = Math.min(minY, e.pos[1]);
+        }
+    }
+    if (!isFinite(minX)) { minX = 0; minY = 0; }
+    const dx = baseX - minX;
+    const dy = baseY - minY;
+
+    const idMap = new Map();
+    const created = [];
+
+    for (const entry of entries) {
+        const node = LiteGraph.createNode(entry.type);
+        if (!node) {
+            console.warn(`[NukeLink] template: node type not installed, skipped: ${entry.type}`);
+            continue;
+        }
+        app.graph.add(node);
+
+        // configure() restores widgets/slots/properties; feed it a copy with
+        // the freshly assigned id and stale link references stripped.
+        let data = null;
+        try { data = JSON.parse(JSON.stringify(entry)); } catch (e) {}
+        if (data) {
+            data.id = node.id;
+            if (Array.isArray(data.inputs))  data.inputs.forEach(inp => { inp.link = null; });
+            if (Array.isArray(data.outputs)) data.outputs.forEach(out => { out.links = []; });
+            try { node.configure(data); } catch (e) {
+                console.warn(`[NukeLink] template: configure failed for ${entry.type}`, e);
+            }
+        }
+        node.pos = [
+            (Array.isArray(entry.pos) ? entry.pos[0] : 0) + dx,
+            (Array.isArray(entry.pos) ? entry.pos[1] : 0) + dy,
+        ];
+        idMap.set(entry.id, node);
+        created.push(node);
+    }
+
+    // Rebuild links: [id, origin_id, origin_slot, target_id, target_slot, type]
+    for (const link of template.links || []) {
+        const L = Array.isArray(link)
+            ? { o: link[1], os: link[2], t: link[3], ts: link[4] }
+            : { o: link.origin_id, os: link.origin_slot, t: link.target_id, ts: link.target_slot };
+        const src = idMap.get(L.o);
+        const dst = idMap.get(L.t);
+        if (!src || !dst) continue;
+        try { src.connect(L.os, dst, L.ts); } catch (e) {
+            console.warn("[NukeLink] template: could not restore link", link, e);
+        }
+    }
+
+    return created;
+}
+
 api.addEventListener("nukelink.receive", ({ detail }) => {
     const reads        = detail.reads || [];
     const fileLocation = detail.file_location || "";
@@ -1218,49 +1324,60 @@ api.addEventListener("nukelink.receive", ({ detail }) => {
     const totalHeight = reads.length * VERTICAL_OFFSET;
     const startY = cy - totalHeight / 2;
 
+    // Template chosen in the Nuke send dialog (may be absent). The first Read
+    // is injected into the template's own Read - NukeLink node; any remaining
+    // Reads are created as plain Read nodes beside it.
+    let templateNodes = [];
+    let tRead = null;
+    let tPB   = null;
+    if (detail.template_workflow) {
+        templateNodes = nukeLinkInsertTemplate(detail.template_workflow, cx, startY);
+        tRead = templateNodes.find(n => n.type === "Read - NukeLink") || null;
+        tPB   = templateNodes.find(n => n.type === "Path Builder - NukeLink") || null;
+        if (templateNodes.length && !tRead) {
+            console.warn("[NukeLink] template has no Read - NukeLink node; sending Reads as plain nodes");
+        }
+        if (tRead) nukeLinkApplyRead(tRead, reads[0]);
+    }
+
+    const bareReads = tRead ? reads.slice(1) : reads;
+    const bareX = templateNodes.length ? cx - 480 : cx;
+
     const readNodes = [];
 
-    reads.forEach((read, i) => {
+    bareReads.forEach((read, i) => {
         const node = LiteGraph.createNode("Read - NukeLink");
         if (!node) {
             console.error("[NukeLink] Failed to create Read - NukeLink node");
             return;
         }
 
-        node._nukeWasConfigured = true;
-        const showPreview = app.ui.settings.getSettingValue("NukeLink.Read.ShowPreviewByDefault", true);
-        const playPreview = app.ui.settings.getSettingValue("NukeLink.Read.PlayPreviewByDefault", true);
-        node._nukeLinkPreviewRestore = {
-            hidden: !showPreview,
-            paused: !playPreview,
-        };
-        node._nukeReadRestore = {
-            first_frame:    read.first_frame,
-            last_frame:     read.last_frame,
-            colorspace:     read.colorspace,
-            missing_frames: read.missing_frames,
-        };
-
         app.graph.add(node);
-        node.pos = [cx - node.size[0] / 2, startY + i * VERTICAL_OFFSET];
-
-        const fileWidget = node.widgets?.find(w => w.name === "file_path");
-        if (fileWidget) fileWidget.value = read.file_path;
-
-        setTimeout(() => {
-            node.updateParameters({
-                filename:       read.file_path,
-                first_frame:    read.first_frame,
-                last_frame:     read.last_frame,
-                colorspace:     read.colorspace,
-                missing_frames: read.missing_frames,
-            }, true);
-        }, 0);
+        node.pos = [bareX - node.size[0] / 2, startY + i * VERTICAL_OFFSET];
+        nukeLinkApplyRead(node, read);
 
         readNodes.push(node);
     });
 
-    // Drop one Path Builder to the right of the rightmost Read node
+    // Populate the Path Builder with what Nuke sent - either the template's
+    // own Path Builder, or a standalone one dropped next to the Read nodes.
+    const populatePB = (pb) => {
+        nukeLinkSetWidget(pb, "file_location",  fileLocation);
+        nukeLinkSetWidget(pb, "version_number", versionNumber);
+        nukeLinkSetWidget(pb, "shot", detail.shot || "");
+        if (frameDelim !== null) nukeLinkSetWidget(pb, "frame_delim", frameDelim);
+        nukeLinkSetWidget(pb, "nuke_port", detail.nuke_port || "");
+    };
+
+    if (tPB) {
+        // Populate after the node's own creation timeouts so our values win.
+        setTimeout(() => {
+            populatePB(tPB);
+            app.graph.setDirtyCanvas(true);
+        }, 0);
+        return;
+    }
+
     if (!detail.send_path_builder) {
         app.graph.setDirtyCanvas(true);
         return;
@@ -1274,23 +1391,20 @@ api.addEventListener("nukelink.receive", ({ detail }) => {
 
         app.graph.add(pb);
 
-        const rightmost = readNodes.reduce((max, n) => {
-            return (n.pos[0] + n.size[0]) > (max.pos[0] + max.size[0]) ? n : max;
-        }, readNodes[0]);
+        const anchors = readNodes.length ? readNodes : templateNodes;
+        if (anchors.length) {
+            const rightmost = anchors.reduce((max, n) => {
+                return (n.pos[0] + n.size[0]) > (max.pos[0] + max.size[0]) ? n : max;
+            }, anchors[0]);
+            const centerY = readNodes.length
+                ? startY + (bareReads.length - 1) * VERTICAL_OFFSET / 2
+                : rightmost.pos[1];
+            pb.pos = [rightmost.pos[0] + rightmost.size[0] + 50, centerY - pb.size[1] / 2];
+        } else {
+            pb.pos = [cx, cy];
+        }
 
-        const centerY = startY + (reads.length - 1) * VERTICAL_OFFSET / 2;
-        pb.pos = [rightmost.pos[0] + rightmost.size[0] + 50, centerY - pb.size[1] / 2];
-
-        const setPB = (name, value) => {
-            const w = pb.widgets?.find(w => w.name === name);
-            if (w) w.value = value;
-        };
-
-        setPB("file_location",  fileLocation);
-        setPB("version_number", versionNumber);
-        setPB("shot", detail.shot || "");
-        if (frameDelim !== null) setPB("frame_delim", frameDelim);
-        setPB("nuke_port", detail.nuke_port || "");
+        populatePB(pb);
 
         app.graph.setDirtyCanvas(true);
     }, 0);

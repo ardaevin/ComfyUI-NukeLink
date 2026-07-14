@@ -46,6 +46,8 @@ async def nukelink_receive(request):
         "shot":              data.get("shot", ""),
         "send_path_builder": data.get("send_path_builder", True),
         "nuke_port":         data.get("nuke_port", None),
+        "template_name":     data.get("template_name", None),
+        "template_workflow": data.get("template_workflow", None),
     })
 
     return web.Response(status=200, text="ok")

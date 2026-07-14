@@ -1,8 +1,14 @@
 [project]
 name = "ComfyUI-NukeLink"
-version = "0.1.0"
-description = "A ComfyUI custom node extension bridging Nuke and ComfyUI on the same machine."
+version = "0.2.0"
+description = "A ComfyUI custom node extension bridging Nuke and ComfyUI on the same machine, with workflow templates driven from the Nuke send dialog."
 license = {file = "LICENSE"}
 
 [project.urls]
-Repository = "https://github.com/drberkowitz/ComfyUI-NukeLink"
+Repository = "https://github.com/ardaevin/ComfyUI-NukeLink"
+
+[tool.comfy]
+DisplayName = "ComfyUI-NukeLink"
+# Set your registry publisher id before running `comfy node publish`.
+# Create one at https://registry.comfy.org
+PublisherId = ""

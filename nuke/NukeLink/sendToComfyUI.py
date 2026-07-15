@@ -3,6 +3,7 @@ import nukescripts
 import os
 import re
 import json
+import shutil
 import socket
 import threading
 
@@ -85,20 +86,26 @@ SHOT_VERSION_SEPARATOR = "_comp_v"
 #
 # Dropdown contents:
 #   DEFAULT_LABEL -> builds DEFAULT_TEMPLATE_FILE, your own default setup.
-#                    Always listed first and pre-selected. Save a workflow to
-#                    that path to define it.
+#                    Always listed first and pre-selected. On first use it is
+#                    seeded from the bundled BUNDLED_DEFAULT_TEMPLATE (a Read ->
+#                    Write -> Path Builder graph). Overwrite DEFAULT_TEMPLATE_FILE
+#                    with any saved workflow to change your default.
 #   anything else -> a .json from the Workflows Folder.
 #
 # BARE_LABEL is the stock NukeLink behaviour (Read node(s) + Path Builder only,
-# no template). It is hidden from the dropdown, but kept on purpose: it is still
-# the automatic fallback when DEFAULT_TEMPLATE_FILE is missing or unreadable, so
-# a fresh install still sends something useful. Set SHOW_BARE_OPTION = True to
-# offer it as an explicit choice.
+# no template). It is hidden from the dropdown, but kept on purpose: it is the
+# fallback if neither the user nor the bundled default template can be read. Set
+# SHOW_BARE_OPTION = True to offer it as an explicit choice.
 #
 # The Workflow dropdown is not persisted; it always reopens on DEFAULT_LABEL.
 DEFAULT_WORKFLOWS_FOLDER = ""
 PREFS_FILE = os.path.expanduser("~/.nuke/nukelink_send_prefs.json")
 DEFAULT_TEMPLATE_FILE = os.path.expanduser("~/.nuke/nukelink_default_template.json")
+# Shipped default, seeded into DEFAULT_TEMPLATE_FILE on first use. Lives next to
+# this script so it is always present in the package.
+BUNDLED_DEFAULT_TEMPLATE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "default_template.json"
+)
 DEFAULT_LABEL = "Default"
 BARE_LABEL = "(bare)"
 SHOW_BARE_OPTION = False
@@ -241,6 +248,29 @@ def _derive_shot(script_path):
 # ---------------------------------------------------------------------------
 # Send dialog: workflows folder + output subpath + template picker
 # ---------------------------------------------------------------------------
+
+def _resolve_default_template():
+    """Path to load for the Default entry.
+
+    On first use the user's DEFAULT_TEMPLATE_FILE is seeded from the bundled
+    Read -> Write -> Path Builder template, so a fresh install builds a connected
+    default out of the box. The user copy is theirs to overwrite afterwards and
+    survives package updates. Returns None only if neither file is available
+    (caller then falls back to a bare send)."""
+    user = DEFAULT_TEMPLATE_FILE
+    if os.path.isfile(user):
+        return user
+    if os.path.isfile(BUNDLED_DEFAULT_TEMPLATE):
+        try:
+            os.makedirs(os.path.dirname(user), exist_ok=True)
+            shutil.copyfile(BUNDLED_DEFAULT_TEMPLATE, user)
+            return user
+        except Exception as e:
+            # Could not write the user copy - load the bundled file directly.
+            print("[NukeLink] could not seed default template: {}".format(str(e)))
+            return BUNDLED_DEFAULT_TEMPLATE
+    return None
+
 
 def _load_prefs():
     try:
@@ -452,16 +482,18 @@ def send_to_comfyui():
     template_workflow = None
 
     if sel["mode"] == "default":
-        try:
-            with open(DEFAULT_TEMPLATE_FILE, "r") as f:
-                template_workflow = json.load(f)
-            template_name = DEFAULT_LABEL
-        except Exception as e:
-            # Don't block the send - fall back to the bare Read + Path Builder.
-            nuke.message(
-                "Default template could not be loaded, sending bare "
-                "(Read + Path Builder only):\n{}\n\n{}".format(DEFAULT_TEMPLATE_FILE, str(e))
-            )
+        template_path = _resolve_default_template()
+        if template_path:
+            try:
+                with open(template_path, "r") as f:
+                    template_workflow = json.load(f)
+                template_name = DEFAULT_LABEL
+            except Exception as e:
+                # Don't block the send - fall back to the bare Read + Path Builder.
+                nuke.message(
+                    "Default template could not be loaded, sending bare "
+                    "(Read + Path Builder only):\n{}\n\n{}".format(template_path, str(e))
+                )
     elif sel["mode"] == "folder" and sel["workflow"]:
         wf_path = os.path.join(sel["folder"], sel["workflow"] + ".json")
         try:

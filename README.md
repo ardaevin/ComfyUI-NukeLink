@@ -1,7 +1,7 @@
 # ComfyUI-NukeLink
 
 > **This is a fork of [ComfyUI-NukeLink](https://github.com/drberkowitz/ComfyUI-NukeLink) by [Daniel Berkowitz](https://github.com/drberkowitz).**
-> All credit for the original bridge goes to him. This fork adds a workflow **template picker** to the send step, resolves **pipeline-relative Read paths**, and ships the Nuke side as a **drop-in package**. See [What's new in this fork](#-whats-new-in-this-fork).
+> All credit for the original bridge goes to him. This fork adds a workflow **template picker** to the send step, adds a Output Subpath dialog box, resolves **pipeline-relative Read paths**, and ships the Nuke side as a **drop-in package**. Also ComfyUI default nodes now come as Read and Pathlink connected Write. See [What's new in this fork](#-whats-new-in-this-fork).
 > Licensed MIT, same as the original.
 
 ![Version](https://img.shields.io/badge/version-0.2.0-blue)
@@ -16,7 +16,7 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
 
 ![Send To ComfyUI dialog in Nuke, with the workflow template picker](assets/send-dialog.png)
 
-*The Send To ComfyUI dialog: pick a saved workflow (or your Default) and it's built around the plate in ComfyUI. Temporary screenshot — a fuller walkthrough is on the way.*
+*The Send To ComfyUI dialog: pick a saved workflow (or Default), and it's built around the plate in ComfyUI. Temporary screenshot — a fuller walkthrough is on the way.*
 
 ---
 
@@ -46,18 +46,14 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
 
 Everything below is additive — the original behaviour is preserved and is still the default.
 
-**Workflow template picker.** "Send To ComfyUI" now opens a dialog where you choose a *saved ComfyUI workflow* to build around the plate, instead of always getting bare nodes. The chosen workflow is instantiated into the current graph, with the plate injected into its `Read - NukeLink` node and its `Path Builder` populated from the Nuke script. Templates are just workflow `.json` files in a folder you pick — **drop a new one in and it appears in the dropdown; no code changes.**
+**Workflow template picker.** "Send To ComfyUI" now opens a dialog where you choose a *saved ComfyUI workflows folder* to build around the plate, instead of always getting bare nodes. The chosen workflow is instantiated into the current graph, with the plate injected into its `Read - NukeLink` node and its `Path Builder`connected `Write - NukeLink` populated from the Nuke script. Templates are just workflow `.json` files in a folder you pick — **drop a new one in, and it appears in the dropdown; no code changes.**
 
-- **Default** — always listed first and pre-selected. Builds the workflow saved at `~/.nuke/nukelink_default_template.json`. This is your own starting setup: save a workflow there to define it.
+- **Default** — always listed first and pre-selected. This is your own starting setup: Use it for quick roundtrips, or to prepare your template workflows.
 - Every other entry is a `.json` from your Workflows Folder.
 
 The Workflows Folder and Output Subpath are remembered between sends; the dropdown always reopens on **Default**.
 
-If no default template exists yet, choosing **Default** falls back to the original behaviour (Read node(s) + Path Builder only), so a fresh install still sends something useful. That bare mode can also be offered as an explicit dropdown entry by setting `SHOW_BARE_OPTION = True`.
-
-**Pipeline-relative Read paths are resolved.** Many pipelines set the Root node's `project_directory` and store Read paths relative to it. ComfyUI has no concept of that, so those paths used to arrive unusable. They are now resolved to absolute before sending (using the same rule Nuke itself applies), with the `%04d` / `####` frame pattern preserved. Absolute paths are untouched, so existing setups are unaffected. A Read that still cannot be resolved is skipped with a clear reason instead of being sent broken.
-
-**Optional `project_directory` shot root.** Set `USE_PROJECT_DIRECTORY = True` to use Nuke's `project_directory` as the shot root for the output location, instead of counting folders with `LEVELS_UP`. If it is unset, the `LEVELS_UP` climb is used as before. Off by default.
+**Pipeline-relative Read paths are resolved.** Many pipelines set the Root node's `project_directory` and store Read paths relative to it. ComfyUI has no concept of that, so those paths used to arrive unusable. They are now resolved to absolute before sending (using the same rule Nuke itself applies), with the `%04d` / `####` frame pattern preserved. Absolute paths are untouched, so existing setups are unaffected. A Read that still cannot be resolved is skipped with a clear reason instead of being sent as broken.
 
 **Nuke side is now a drop-in package.** No more copying a script and pasting lines into your `menu.py` — put one folder on your plugin path and it self-registers. See [Nuke Side](#nuke-side).
 
@@ -68,9 +64,9 @@ If no default template exists yet, choosing **Default** falls back to the origin
 ## ✨ Features
 
 - Send one or more Nuke Read nodes to ComfyUI with knob values intact: file path, colorspace, frame range, and missing frames mode
-- Supports a wide range of file types including EXR, TIFF, DPX, PNG, JPG, TGA, and more
+- Supports a wide range of file types, including EXR, TIFF, DPX, PNG, JPG, TGA, and more
 - Path Builder node dropped on canvas automatically, pre-populated with output location, and shot name
-- Shot name and output location derived automatically from your Nuke script path and pipeline environment variables
+- Shot name and output location are derived automatically from your Nuke script path and pipeline environment variables
 - Supports multiple simultaneous Nuke instances, with each instance automatically assigned its own listener port
 - Send ComfyUI outputs back to Nuke as Read nodes via right-click on any NukeLink - Write node
 - Sequence and still image preview on Read and Write nodes with playback controls: show/hide, pause/resume, re-render, and sync
@@ -85,7 +81,7 @@ If no default template exists yet, choosing **Default** falls back to the origin
 
 - Nuke 10 or later (including Nuke Indie)
 - ComfyUI local install: standard, portable, or desktop (not ComfyUI Cloud)
-- ffmpeg (required for in node preview for sequences in ComfyUI)
+- ffmpeg (required for in-node preview for sequences in ComfyUI)
 - One of the following image libraries for reading and writing frames:
   - OpenImageIO (recommended)
   - OpenCV (cv2)
@@ -131,7 +127,7 @@ nuke.pluginAddPath('/path/to/ComfyUI-NukeLink/nuke/NukeLink')
 
 Then restart Nuke. You will find **Nodes ▸ SendToComfyUI ▸ Send To ComfyUI**.
 
-To bind a keyboard shortcut, set `MENU_SHORTCUT` in `nuke/NukeLink/menu.py` (e.g. `"ctrl+shift+c"`). It is empty by default so it cannot collide with an existing binding — note that some *system-wide* hotkeys (Microsoft Copilot, for instance) are grabbed by the OS before Nuke ever sees them.
+To bind a keyboard shortcut, set `MENU_SHORTCUT` in `nuke/NukeLink/menu.py` (e.g. `"ctrl+shift+c"`).
 
 ### Configuration
 
@@ -141,7 +137,7 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 - `LEVELS_UP` - How many folders to climb from your `.nk` script location to reach the shot root. For example, if your script lives at `E:/Shows/Project/Shots/SH010/nuke/scripts/SH010_comp_v001.nk`, set this to `2` to land at `E:/Shows/Project/Shots/SH010/`.
 - `OUTPUT_SUBFOLDER` - The folder path appended after climbing. Default is `elements`. May be a nested path such as `Comp/Inputs/ComfyUI`. This becomes the base output location populated in the Path Builder node.
 - `USE_PROJECT_DIRECTORY` - When `True`, and the Nuke script has a `project_directory` set, that folder is used as the shot root instead of the `LEVELS_UP` climb. Falls back to the climb when it is unset, so it is safe to leave on. Default `False`. **Leave it off if your `project_directory` points at the show root rather than the shot**, or output would land at the show level.
-- `DEFAULT_WORKFLOWS_FOLDER` - Seeds the "Workflows Folder" field on first run. Empty by default; whatever you browse to is remembered afterwards.
+- `DEFAULT_WORKFLOWS_FOLDER` - Seeds the "Workflows Folder" field on the first run. Empty by default; whatever you browse to is remembered afterwards.
 - `DEFAULT_TEMPLATE_FILE` - Where the **Default** template is read from. Defaults to `~/.nuke/nukelink_default_template.json`. Save a ComfyUI workflow to that path to define your default setup.
 - `SHOW_BARE_OPTION` - Whether to list `(bare)` — Read node(s) + Path Builder only, no template — as an explicit dropdown entry. Default `False`. It remains the automatic fallback when no default template exists, whether or not it is listed.
 - `SHOT_ENV_VAR` - The name of the environment variable your pipeline uses to identify the current shot. NukeLink will look this up at runtime using `os.environ.get()`. For example, if your pipeline sets an environment variable called `SHOTGUN_SHOT` or `SHOW_SHOT`, put that name here. If the variable is not found in the environment, NukeLink will fall back to parsing the shot name from the script filename using `SHOT_VERSION_SEPARATOR`.
@@ -155,13 +151,13 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 
 1. In Nuke, select one or more Read nodes
 2. Tab search for **Send To ComfyUI** or right click in the node graph and select it under the SendToComfyUI menu
-3. An alert will pop up confirming the node was sent and asking you to switch to ComfyUI. A NukeLink - Read node will be dropped on the canvas for each selected Nuke Read node, pre-populated with file path, colorspace, frame range, and missing frames mode. A Path Builder node will also be created to the right, pre-populated with your output location, version number, and shot name.  The Path Builder node also includes the correct Nuke listener port so the Write node knows exactly where to send renders back to.
+3. An alert will pop up confirming the node was sent and asking you to switch to ComfyUI. A NukeLink - Read node will be dropped on the canvas for each selected Nuke Read node, pre-populated with file path, colorspace, frame range, and missing frames mode. A Write node connected to a Path-Builder will also be created to the right, pre-populated with your output location (with appended subpath) and version number.  The Path Builder node also includes the correct Nuke listener port so the Write node knows exactly where to send renders back to.
 
 ### ⬅️ ComfyUI to Nuke
 
 1. In ComfyUI, right-click a Write node after the graph has been executed and image(s) have been written to disk
 2. Select **Send to Nuke** from the context menu
-3. Switch back to Nuke. A Read node will have dropped into the node graph pointing to the rendered output.
+3. Switch back to Nuke. A Read node will have been dropped into the node graph, pointing to the rendered output.
 
 <table>
   <tr>
@@ -172,7 +168,7 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 
 ### ComfyUI Settings Panel
 
-NukeLink has a settings section to ComfyUI's built-in settings panel, controlling default values for new nodes created directly in ComfyUI as well as preview behavior for Read and Write nodes.
+NukeLink has a settings section in ComfyUI's built-in settings panel, controlling default values for new nodes created directly in ComfyUI as well as preview behavior for Read and Write nodes.
 
 Settings include defaults for:
 - Preview visibility and playback on Read and Write nodes

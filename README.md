@@ -14,7 +14,9 @@
 
 A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read nodes from Nuke directly into ComfyUI and return rendered outputs back to Nuke as Read nodes.
 
-![Hero Shot](https://github.com/user-attachments/assets/d5d216bc-f877-4d7a-b0b3-949c4d1ca95d)
+![Send To ComfyUI dialog in Nuke, with the workflow template picker](assets/send-dialog.png)
+
+*The Send To ComfyUI dialog: pick a saved workflow (or your Default) and it's built around the plate in ComfyUI. Temporary screenshot — a fuller walkthrough is on the way.*
 
 ---
 

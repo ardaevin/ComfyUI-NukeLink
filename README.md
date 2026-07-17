@@ -14,9 +14,9 @@
 
 A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read nodes from Nuke directly into ComfyUI and return rendered outputs back to Nuke as Read nodes.
 
-![Send To ComfyUI dialog in Nuke, with the workflow template picker](assets/send-dialog.png)
+![NukeLink in action: sending a clip from Nuke to ComfyUI with a template workflow and getting it back](assets/nukelink-demo.gif)
 
-*The Send To ComfyUI dialog: pick a saved workflow (or Default), and it's built around the plate in ComfyUI. Temporary screenshot — a fuller walkthrough is on the way.*
+*Send a clip from Nuke with a pre-created template workflow, ComfyUI renders it to the Nuke script's subpath folder and versions up each time, then it comes straight back into the node graph.*
 
 ---
 
@@ -162,7 +162,7 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 <table>
   <tr>
     <td><img src="https://github.com/user-attachments/assets/bb30a1af-10a2-4574-a307-2af047026d11" width="100%"/></td>
-    <td><img src="https://github.com/user-attachments/assets/3c35e73e-aa1a-454a-b20b-6c11e82615b1" width="100%"/></td>
+    <td><img src="assets/send-dialog.png" width="100%"/></td>
   </tr>
 </table>
 

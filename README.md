@@ -18,6 +18,8 @@ A bridge between Nuke and ComfyUI on the same machine, allowing you to send Read
 
 *Send a clip from Nuke with a pre-created template workflow, ComfyUI renders it to the Nuke script's subpath folder and versions up each time, then it comes straight back into the node graph.*
 
+▶️ **[Watch the full workflow video](assets/nukelink-workflow.mp4)** — a longer walkthrough of the whole round trip.
+
 ---
 
 ## 📚 Table of Contents

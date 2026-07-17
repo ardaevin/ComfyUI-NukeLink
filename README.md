@@ -163,8 +163,8 @@ Open `sendToComfyUI.py` in a text editor. The config block near the top of the f
 
 <table>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/bb30a1af-10a2-4574-a307-2af047026d11" width="100%"/></td>
     <td><img src="assets/send-dialog.png" width="100%"/></td>
+    <td><img src="https://github.com/user-attachments/assets/bb30a1af-10a2-4574-a307-2af047026d11" width="100%"/></td>
   </tr>
 </table>
 
